@@ -1450,6 +1450,9 @@
                 <button onclick="switchTab('marcas')" class="sidebar-item w-full" id="btn-tab-marcas">
                     <i class="fas fa-award"></i> Marcas
                 </button>
+                <button onclick="switchTab('categorias')" class="sidebar-item w-full" id="btn-tab-categorias">
+                    <i class="fas fa-layer-group"></i> Categorías
+                </button>
                 <button onclick="switchTab('bodysection')" class="sidebar-item w-full" id="btn-tab-bodysection">
                     <i class="fas fa-image"></i> Imágenes Body
                 </button>
@@ -2906,6 +2909,23 @@
                             <i class="fas fa-award text-4xl mb-3"></i>
                             <p class="font-semibold text-sm">No hay marcas registradas</p>
                             <p class="text-xs mt-1">Agrega la primera marca con el botón de arriba</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ TAB: CATEGORÍAS ════════════════════════════════════════ -->
+                <div id="tab-categorias" class="tab-content space-y-5">
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden p-6 md:p-8">
+                        <div class="mb-6">
+                            <h3 class="font-black text-[#0d1b2a] text-xl uppercase tracking-tighter">Categorías de la Tienda</h3>
+                            <p class="text-sm text-gray-400 mt-1">Sube imágenes para tus categorías (se mostrarán en las bolitas de categorías de la tienda). Las categorías se sincronizan desde tus productos.</p>
+                        </div>
+                        <div id="categoriasContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            <!-- Las categorías se cargarán aquí por JS -->
+                        </div>
+                        <div id="categoriasEmpty" class="hidden text-center py-12 text-gray-300">
+                            <i class="fas fa-layer-group text-4xl mb-3"></i>
+                            <p class="font-semibold text-sm">No hay categorías registradas</p>
                         </div>
                     </div>
                 </div>
