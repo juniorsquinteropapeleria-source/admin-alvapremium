@@ -1271,14 +1271,82 @@ window.deleteSlide = async (id) => {
 // ════════════════════════════════════════════════════════════════════════════
 
 let editBrandId = null;
+let allProductsForBrands = [];
+let editBrandOldName = '';
 
-window.openBrandModal = (id = null, data = null) => {
+window.filterBrandProducts = () => {
+    if (typeof renderBrandProducts === 'function') {
+        renderBrandProducts(editBrandOldName);
+    }
+};
+
+window.renderBrandProducts = (brandName = '') => {
+    const listContainer = document.getElementById('brandProductsList');
+    if (!listContainer) return;
+    
+    const searchInput = document.getElementById('brandProductSearch');
+    const searchVal = searchInput ? (searchInput.value || '').toLowerCase().trim() : '';
+    const brandNameLower = brandName.toLowerCase().trim();
+    
+    let html = '';
+    
+    // Sort products: checked ones first, then alphabetical by name
+    const sortedProducts = [...allProductsForBrands].sort((a, b) => {
+        const aChecked = brandName && a.marca && a.marca.toLowerCase().trim() === brandNameLower;
+        const bChecked = brandName && b.marca && b.marca.toLowerCase().trim() === brandNameLower;
+        if (aChecked && !bChecked) return -1;
+        if (!aChecked && bChecked) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+    });
+    
+    let visibleCount = 0;
+    sortedProducts.forEach(p => {
+        const isChecked = brandName && p.marca && p.marca.toLowerCase().trim() === brandNameLower;
+        const nameMatch = (p.name || '').toLowerCase().includes(searchVal);
+        const skuMatch = p.sku && p.sku.toLowerCase().includes(searchVal);
+        
+        if (searchVal && !nameMatch && !skuMatch) return;
+        
+        visibleCount++;
+        const img = p.imageUrl || 'https://placehold.co/32x32/f5f5f5/ddd?text=IMG';
+        const otherBrandText = (p.marca && p.marca.toLowerCase().trim() !== brandNameLower) 
+            ? `<span class="text-[10px] text-orange-500 font-bold ml-1 bg-orange-50 px-1.5 py-0.5 rounded">(${p.marca})</span>`
+            : '';
+            
+        html += `
+        <label class="flex items-center gap-3 p-2 hover:bg-gray-100 rounded-lg cursor-pointer transition duration-150">
+            <input type="checkbox" data-product-id="${p.id}" ${isChecked ? 'checked' : ''}
+                class="brand-product-cb rounded text-purple-600 focus:ring-purple-500 h-4 w-4 border-gray-300">
+            <img src="${img}" class="w-8 h-8 rounded object-contain bg-white border border-gray-150" onerror="this.src='https://placehold.co/32x32/f5f5f5/ddd?text=IMG'">
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-gray-800 truncate leading-tight">${p.name}</p>
+                <p class="text-[9px] text-gray-400 font-medium truncate mt-0.5">${p.sku || 'Sin SKU'}${otherBrandText}</p>
+            </div>
+        </label>
+        `;
+    });
+    
+    if (visibleCount === 0) {
+        html = '<div class="text-center py-6 text-xs text-gray-400">No se encontraron productos</div>';
+    }
+    
+    listContainer.innerHTML = html;
+};
+
+window.openBrandModal = async (id = null, data = null) => {
     editBrandId = id;
+    editBrandOldName = data ? (data.name || '') : '';
+    
     document.getElementById('brandModalTitle').textContent = id ? 'Editar Marca' : 'Nueva Marca';
     document.getElementById('brandId').value = '';
     document.getElementById('brandName').value = '';
     document.getElementById('brandOrder').value = '';
     document.getElementById('brandImageUrl').value = '';
+
+    const searchInput = document.getElementById('brandProductSearch');
+    if (searchInput) searchInput.value = '';
+    const listContainer = document.getElementById('brandProductsList');
+    if (listContainer) listContainer.innerHTML = '<div class="text-center py-6 text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando productos...</div>';
 
     const prev = document.getElementById('brandImgPreview');
     const icon = document.getElementById('brandUploadIcon');
@@ -1298,6 +1366,23 @@ window.openBrandModal = (id = null, data = null) => {
         }
     }
     openModal('brandModal');
+    
+    try {
+        const pSnap = await db.collection('productos').get();
+        const products = [];
+        pSnap.forEach(doc => {
+            const pData = doc.data();
+            pData.id = doc.id;
+            products.push(pData);
+        });
+        allProductsForBrands = products;
+        renderBrandProducts(editBrandOldName);
+    } catch (e) {
+        console.error('Error loading products for brand modal:', e);
+        if (listContainer) {
+            listContainer.innerHTML = '<div class="text-xs text-red-500 text-center py-2">Error al cargar productos</div>';
+        }
+    }
 };
 window.closeBrandModal = () => closeModal('brandModal');
 
@@ -1341,8 +1426,40 @@ window.saveBrand = async () => {
             showToast('✓ Marca agregada', 'success');
         }
 
+        // Update products in Firestore
+        const listContainer = document.getElementById('brandProductsList');
+        const checkedProductIds = new Set();
+        if (listContainer) {
+            listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                if (cb.checked) {
+                    checkedProductIds.add(cb.getAttribute('data-product-id'));
+                }
+            });
+        }
+        
+        const promises = [];
+        allProductsForBrands.forEach(p => {
+            const isChecked = checkedProductIds.has(p.id);
+            const wasAssociated = editBrandOldName && p.marca && p.marca.toLowerCase().trim() === editBrandOldName.toLowerCase().trim();
+            
+            if (isChecked) {
+                if (p.marca !== name) {
+                    promises.push(db.collection('productos').doc(p.id).update({ marca: name }));
+                }
+            } else if (wasAssociated) {
+                promises.push(db.collection('productos').doc(p.id).update({ marca: '' }));
+            }
+        });
+        
+        if (promises.length > 0) {
+            await Promise.all(promises);
+            console.log(`[saveBrand] Updated ${promises.length} products`);
+        }
+
         closeBrandModal();
         loadBrands();
+        if (typeof loadProducts === 'function') loadProducts(); // Refresh main products list
+
     } catch (err) {
         console.error(err);
         showToast('Error guardando marca', 'error');
@@ -1354,9 +1471,32 @@ window.saveBrand = async () => {
 
 window.deleteBrand = async (id) => {
     if (!confirm('¿Eliminar esta marca?')) return;
-    await db.collection('marcas').doc(id).delete();
-    showToast('Marca eliminada', 'success');
-    loadBrands();
+    try {
+        const d = await db.collection('marcas').doc(id).get();
+        if (d.exists) {
+            const brandName = d.data().name;
+            await db.collection('marcas').doc(id).delete();
+            
+            if (brandName) {
+                const pSnap = await db.collection('productos').where('marca', '==', brandName).get();
+                const promises = [];
+                pSnap.forEach(pDoc => {
+                    promises.push(db.collection('productos').doc(pDoc.id).update({ marca: '' }));
+                });
+                if (promises.length > 0) {
+                    await Promise.all(promises);
+                }
+            }
+            showToast('Marca eliminada', 'success');
+        } else {
+            showToast('Marca no encontrada', 'error');
+        }
+        loadBrands();
+        if (typeof loadProducts === 'function') loadProducts();
+    } catch (err) {
+        console.error(err);
+        showToast('Error al eliminar marca', 'error');
+    }
 };
 
 async function loadBrands() {
