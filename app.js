@@ -64,6 +64,7 @@ window.switchTab = (tabId) => {
         secciones: 'Secciones',
         carrusel: 'Carrusel Hero',
         marcas: 'Marcas',
+        categorias: 'Gestión de Categorías',
         branding: 'Branding',
         clientes: 'Clientes',
         pedidos: 'Pedidos',
@@ -81,6 +82,7 @@ window.switchTab = (tabId) => {
 
     if (tabId === 'carrusel' && typeof loadSlides === 'function') loadSlides();
     if (tabId === 'marcas' && typeof loadBrands === 'function') loadBrands();
+    if (tabId === 'categorias' && typeof loadAdminCategorias === 'function') loadAdminCategorias();
     if (tabId === 'secciones' && typeof loadSecciones === 'function') loadSecciones();
     if (tabId === 'branding' && typeof loadCurrentLogo === 'function') loadCurrentLogo();
     if (tabId === 'dashboard' && typeof loadDashboard === 'function') loadDashboard();
@@ -183,6 +185,7 @@ window.switchTab = (tabId) => {
         secciones: 'Secciones del Catálogo',
         carrusel: 'Carrusel Hero',
         marcas: 'Marcas',
+        categorias: 'Gestión de Categorías',
         branding: 'Logo & Branding',
         clientes: 'Directorio de Clientes',
         pedidos: 'Gestión de Pedidos',
@@ -197,6 +200,7 @@ window.switchTab = (tabId) => {
 
     if (tabId === 'carrusel') loadSlides();
     if (tabId === 'marcas') loadBrands();
+    if (tabId === 'categorias') loadAdminCategorias();
     if (tabId === 'secciones') loadSecciones();
     if (tabId === 'branding') loadCurrentLogo();
     if (tabId === 'dashboard') loadDashboard();
@@ -3185,3 +3189,133 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.addEventListener('input', window.updateNosotrosPreview);
     });
 });
+
+// ── CATEGORÍAS (ADMIN) ────────────────────────────────────────────────────────
+window.loadAdminCategorias = async () => {
+    try {
+        const container = document.getElementById('categoriasContainer');
+        const emptyState = document.getElementById('categoriasEmpty');
+        container.innerHTML = '';
+        
+        // 1. Get all products to extract unique categories
+        const pSnap = await db.collection('productos').get();
+        const categorySet = new Set();
+        pSnap.docs.forEach(doc => {
+            const data = doc.data();
+            if (data.category) categorySet.add(data.category.trim().toUpperCase());
+            if (data.categories && Array.isArray(data.categories)) {
+                data.categories.forEach(c => { if(c) categorySet.add(c.trim().toUpperCase()) });
+            }
+        });
+        
+        // 2. Get existing category docs from 'categorias'
+        const cSnap = await db.collection('categorias').get();
+        const firestoreCats = {};
+        cSnap.docs.forEach(doc => {
+            firestoreCats[doc.id.toUpperCase()] = { id: doc.id, ...doc.data() };
+        });
+        
+        const allCats = Array.from(categorySet).sort();
+        
+        if (allCats.length === 0) {
+            container.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        
+        container.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        
+        allCats.forEach(catName => {
+            const firestoreData = firestoreCats[catName.toUpperCase()] || { name: catName, imageUrl: null };
+            
+            const card = document.createElement('div');
+            card.className = 'border border-gray-100 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow relative overflow-hidden group';
+            
+            const imgHtml = firestoreData.imageUrl 
+                ? `<div class="w-20 h-20 rounded-full overflow-hidden mb-3 border-4 border-white shadow-sm mx-auto">
+                     <img src="${firestoreData.imageUrl}" class="w-full h-full object-cover" />
+                   </div>`
+                : `<div class="w-20 h-20 rounded-full bg-indigo-100 text-indigo-500 flex items-center justify-center mb-3 mx-auto shadow-sm">
+                     <i class="fas fa-image text-2xl"></i>
+                   </div>`;
+                   
+            card.innerHTML = `
+                ${imgHtml}
+                <h4 class="font-bold text-sm text-gray-800 line-clamp-2 leading-tight">${catName}</h4>
+                <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <button onclick="uploadCategoriaImage('${catName}')" class="bg-white text-black text-xs font-bold px-3 py-1.5 rounded-full hover:scale-105 transition-transform shadow-lg">
+                        <i class="fas fa-upload mr-1"></i> Imagen
+                    </button>
+                    ${firestoreData.imageUrl ? `<button onclick="removeCategoriaImage('${catName}')" class="bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full hover:scale-105 transition-transform shadow-lg"><i class="fas fa-trash"></i></button>` : ''}
+                </div>
+            `;
+            container.appendChild(card);
+        });
+        
+    } catch(err) {
+        console.error('Error cargando categorias:', err);
+        showToast('Error al cargar categorías', 'error');
+    }
+};
+
+window.uploadCategoriaImage = (catName) => {
+    cloudinary.openUploadWidget({
+        cloudName: CLOUDINARY_CLOUD_NAME,
+        uploadPreset: CLOUDINARY_UPLOAD_PRESET,
+        sources: ['local', 'url', 'camera'],
+        multiple: false,
+        folder: 'categorias'
+    }, async (error, result) => {
+        if (!error && result && result.event === "success") {
+            const imageUrl = result.info.secure_url;
+            try {
+                // Find or create category doc
+                const cSnap = await db.collection('categorias').where('name', '==', catName).get();
+                let docId = null;
+                
+                // If it exists, update it. If not, create a new one using a standard ID format or let Firestore auto-generate
+                // Wait, it's better to use catName as ID or just query by name. Let's find first matching doc or create.
+                if (!cSnap.empty) {
+                    // Update existing
+                    docId = cSnap.docs[0].id;
+                    await db.collection('categorias').doc(docId).update({ imageUrl: imageUrl });
+                } else {
+                    // We need to check if there's any doc whose ID matches or name matches case-insensitively
+                    const allSnap = await db.collection('categorias').get();
+                    let existingDoc = allSnap.docs.find(d => (d.data().name || '').trim().toUpperCase() === catName.toUpperCase() || d.id.toUpperCase() === catName.toUpperCase());
+                    
+                    if (existingDoc) {
+                        await db.collection('categorias').doc(existingDoc.id).update({ imageUrl: imageUrl });
+                    } else {
+                        // Create new
+                        const docRef = db.collection('categorias').doc();
+                        await docRef.set({ name: catName, imageUrl: imageUrl, order: 99 });
+                    }
+                }
+                showToast('Imagen subida correctamente');
+                loadAdminCategorias(); // refresh
+            } catch (err) {
+                console.error(err);
+                showToast('Error al guardar la imagen en la base de datos', 'error');
+            }
+        }
+    });
+};
+
+window.removeCategoriaImage = async (catName) => {
+    if(!confirm('¿Eliminar la imagen de esta categoría?')) return;
+    try {
+        const allSnap = await db.collection('categorias').get();
+        let existingDoc = allSnap.docs.find(d => (d.data().name || '').trim().toUpperCase() === catName.toUpperCase() || d.id.toUpperCase() === catName.toUpperCase());
+        
+        if (existingDoc) {
+            await db.collection('categorias').doc(existingDoc.id).update({ imageUrl: null });
+            showToast('Imagen eliminada');
+            loadAdminCategorias();
+        }
+    } catch(err) {
+        console.error(err);
+        showToast('Error al eliminar', 'error');
+    }
+};
