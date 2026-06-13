@@ -4294,7 +4294,7 @@
     <!-- ══ MODAL: MARCA ══════════════════════════════════════════════════════ -->
     <div id="brandModal" class="modal-overlay fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
         style="opacity:0;pointer-events:none;">
-        <div class="modal-box bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[92vh]"
+        <div class="modal-box bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[92vh]"
             style="transform:scale(0.96)">
             <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
                 <div>
@@ -4341,6 +4341,22 @@
                     </label>
                     <input type="number" id="brandOrder" placeholder="1" min="0"
                         class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+
+                <!-- Products list -->
+                <div class="border-t border-gray-100 pt-4">
+                    <label class="block text-xs font-black text-gray-600 mb-2 uppercase tracking-wider">
+                        <i class="fas fa-boxes text-purple-500 mr-1"></i> Productos de esta Marca
+                    </label>
+                    <div class="mb-3">
+                        <input type="text" id="brandProductSearch" placeholder="Buscar productos..."
+                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            oninput="filterBrandProducts()">
+                    </div>
+                    <div id="brandProductsList" class="space-y-2 max-h-48 overflow-y-auto pr-1 border border-gray-100 rounded-xl p-2 bg-gray-50/50">
+                        <!-- Products will be loaded dynamically here -->
+                        <div class="text-center py-4 text-xs text-gray-400">Cargando productos...</div>
+                    </div>
                 </div>
             </div>
             <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 flex-shrink-0">
