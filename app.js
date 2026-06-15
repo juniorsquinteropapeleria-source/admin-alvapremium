@@ -3212,7 +3212,12 @@ window.loadAdminCategorias = async () => {
         const cSnap = await db.collection('categorias').get();
         const firestoreCats = {};
         cSnap.docs.forEach(doc => {
-            firestoreCats[doc.id.toUpperCase()] = { id: doc.id, ...doc.data() };
+            const data = doc.data();
+            const nameKey = (data.name || '').trim().toUpperCase();
+            if (nameKey) {
+                firestoreCats[nameKey] = { id: doc.id, ...data };
+            }
+            firestoreCats[doc.id.toUpperCase()] = { id: doc.id, ...data };
         });
         
         const allCats = Array.from(categorySet).sort();
@@ -3260,37 +3265,52 @@ window.loadAdminCategorias = async () => {
 };
 
 window.uploadCategoriaImage = (catName) => {
-    cloudinary.openUploadWidget({
-        cloudName: CLOUDINARY_CLOUD_NAME,
-        uploadPreset: CLOUDINARY_UPLOAD_PRESET,
+    if (typeof cloudinary === 'undefined' || !cloudinary.createUploadWidget) {
+        showToast('⏳ Cloudinary aún está cargando, intenta en unos segundos...', 'error');
+        return;
+    }
+
+    const { cloudName, preset } = getCloudinaryConfig();
+    if (!preset) {
+        showToast('⚠ Agrega tu Upload Preset en la sección Configuración', 'error');
+        return;
+    }
+
+    const widget = cloudinary.createUploadWidget({
+        cloudName: cloudName,
+        uploadPreset: preset,
         sources: ['local', 'url', 'camera'],
         multiple: false,
-        folder: 'categorias'
+        clientAllowedFormats: ['image'],
+        resourceType: 'image',
+        maxFileSize: 10000000,
+        folder: 'categorias',
+        theme: 'minimal'
     }, async (error, result) => {
         if (!error && result && result.event === "success") {
-            const imageUrl = result.info.secure_url;
+            const secureUrl = result.info.secure_url;
+            const optimizedUrl = secureUrl.replace('/upload/', '/upload/f_auto,q_auto:good/');
+            
             try {
                 // Find or create category doc
                 const cSnap = await db.collection('categorias').where('name', '==', catName).get();
                 let docId = null;
                 
-                // If it exists, update it. If not, create a new one using a standard ID format or let Firestore auto-generate
-                // Wait, it's better to use catName as ID or just query by name. Let's find first matching doc or create.
                 if (!cSnap.empty) {
                     // Update existing
                     docId = cSnap.docs[0].id;
-                    await db.collection('categorias').doc(docId).update({ imageUrl: imageUrl });
+                    await db.collection('categorias').doc(docId).update({ imageUrl: optimizedUrl });
                 } else {
                     // We need to check if there's any doc whose ID matches or name matches case-insensitively
                     const allSnap = await db.collection('categorias').get();
                     let existingDoc = allSnap.docs.find(d => (d.data().name || '').trim().toUpperCase() === catName.toUpperCase() || d.id.toUpperCase() === catName.toUpperCase());
                     
                     if (existingDoc) {
-                        await db.collection('categorias').doc(existingDoc.id).update({ imageUrl: imageUrl });
+                        await db.collection('categorias').doc(existingDoc.id).update({ imageUrl: optimizedUrl });
                     } else {
                         // Create new
                         const docRef = db.collection('categorias').doc();
-                        await docRef.set({ name: catName, imageUrl: imageUrl, order: 99 });
+                        await docRef.set({ name: catName, imageUrl: optimizedUrl, order: 99 });
                     }
                 }
                 showToast('Imagen subida correctamente');
@@ -3299,8 +3319,15 @@ window.uploadCategoriaImage = (catName) => {
                 console.error(err);
                 showToast('Error al guardar la imagen en la base de datos', 'error');
             }
+        } else if (error && error !== 'Widget is completely closed.') {
+            console.error('Widget upload error', error);
+            if (error.status !== 'close') {
+                showToast('Error cargando imagen', 'error');
+            }
         }
     });
+
+    widget.open();
 };
 
 window.removeCategoriaImage = async (catName) => {
