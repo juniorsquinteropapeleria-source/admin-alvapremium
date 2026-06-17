@@ -629,7 +629,7 @@ window.openProductModal = (id = null, data = null) => {
     loadMarcaList();
 
     // Se cargan dinámicamente desde los productos existentes en loadProducts()
-    if (id && data) {
+    if (data) {
         document.getElementById('productName').value = data.name || '';
         document.getElementById('productSKU').value = data.sku || '';
         document.getElementById('productCategory').value = data.category || '';
@@ -716,6 +716,23 @@ window.editProduct = (id) => {
     }).catch(err => {
         console.error('Error fetching product for edit:', err);
         showToast('Error al cargar artículo para editar', 'error');
+    });
+};
+
+window.cloneProduct = (id) => {
+    db.collection('productos').doc(id).get().then(d => {
+        if (d.exists) {
+            const data = d.data();
+            data.name = data.name + ' (Copia)';
+            data.sku = ''; // Limpiar SKU para evitar duplicados
+            openProductModal(null, data);
+            showToast('Artículo clonado en el formulario. Edita y guarda.', 'info');
+        } else {
+            showToast('Artículo no encontrado', 'error');
+        }
+    }).catch(err => {
+        console.error('Error fetching product for clone:', err);
+        showToast('Error al clonar artículo', 'error');
     });
 };
 
@@ -978,6 +995,10 @@ async function loadProducts() {
                     <button onclick="editProduct('${p.id}')" title="Editar"
                         class="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition">
                         <i class="fas fa-edit text-xs"></i>
+                    </button>
+                    <button onclick="cloneProduct('${p.id}')" title="Clonar"
+                        class="w-8 h-8 flex items-center justify-center bg-green-50 hover:bg-green-100 rounded-lg text-green-600 transition">
+                        <i class="fas fa-copy text-xs"></i>
                     </button>
                     <button onclick="generateProductSheet('${p.id}')"
                         class="w-8 h-8 flex items-center justify-center bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-600 transition" title="Generar Ficha Catálogo">
